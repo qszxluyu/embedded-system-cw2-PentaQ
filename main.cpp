@@ -24,6 +24,7 @@
 #define L3Lpin D9           //0x10
 #define L3Hpin D10          //0x20
 
+#define testpin D1
 //Mapping from sequential drive states to motor phase outputs
 /*
 State   L1  L2  L3
@@ -44,11 +45,13 @@ const int8_t stateMap[] = {0x07,0x05,0x03,0x04,0x01,0x00,0x02,0x07};
 //const int8_t stateMap[] = {0x07,0x01,0x03,0x02,0x05,0x00,0x04,0x07}; //Alternative if phase order of input or drive is reversed
 
 //Phase lead to make motor spin
-volatile int8_t orientation=2;//2 for forwards, -2 for backwards
 volatile int8_t lead = 2;  //2 for forwards, -2 for backwards
 
 //Status LED
 DigitalOut led1(LED1);
+
+DigitalOut tt(testpin);
+
 InterruptIn CA(CHA);
 InterruptIn CB(CHB);
 //Photointerrupter inputs
@@ -65,7 +68,7 @@ DigitalOut L3H(L3Hpin);
 //Set a given drive state
 
 RawSerial pc(USBTX, USBRX);  //-------------------------------------------------------------------change1
-
+Timer test;
 Thread thread;
 Timer t;
 Timer T;
@@ -144,16 +147,19 @@ int8_t motorHome()
     motorOut(0);
     wait(2.5);
     //Get the rotor state
+    
     return readRotorState();
 }
 
 
 //update motor state
 void update_motor_state()
-{
+{ 
     intState = readRotorState();
     motorOut((intState-orState+lead+6)%6); //+6 to make sure the remainder is positive
+   
 }
+
 
 
 void synchronise_cha()
@@ -169,13 +175,13 @@ void synchronise_cha()
     }
     revolution_counter++;
     //actual CHA_revolution=revolution_counter*117+synchronise_counter
-
+    update_motor_state();
     T.reset();
     T.start();
 }
 
 void controller_update()  //from interrupt
-{
+{   
     t.stop();
     CA_counter++;
     time_CA=t.read(); //-------------------------------------------------change
@@ -190,13 +196,12 @@ void speed_controller(float v)
         duty_cycle=0.0f;
         update_motor_state();
     }
+    
     if( 0<v<=4.0f)  {
         if(velocity<v) {
             duty_cycle=1.0f;
-            lead=orientation;
         } else {
-            duty_cycle=0.5f;
-            lead=-orientation;
+            duty_cycle=0.0f;
         }
         update_motor_state();
     }
@@ -213,10 +218,9 @@ void speed_controller(float v)
 
 
 void controller()
-{
+{   
     while(1) {
         Thread::signal_wait(0x1);
-
         I1.disable_irq();
         I2.disable_irq();
         I3.disable_irq();
@@ -224,28 +228,30 @@ void controller()
         velocity=1.0f/117/time_CA;
 
         if(mode==1) {
-            velocity_target=K1*((float)R-CA_counter/117.0f)+K2/time_R+0.6f;
-            if((float)R*117.0f-CA_counter<117.0f && (float)R*117.0f-CA_counter>0.0f){velocity_target=0.6f;}
-
-            if (velocity_target<0.0f){velocity_target=0.0f;}
+            velocity_target=K1*((float)R-CA_counter/117.0f)+K2/(time_CA*117);
+            if((float)R*117.0f-CA_counter<234.0f && (float)R*117.0f-CA_counter>0.0f){velocity_target=1.0f;}
+            if((float)R<CA_counter/117.0f){velocity_target=0.0f;
+            }
+            if (velocity_target<0.0f){velocity_target=0.0f;}            
             speed_controller(velocity_target);
         }
 
 
         if(mode==2) { //------------------------on/off control for slow speed;
+        
             speed_controller((float)V);
+            
         }
 
         if(mode==3) {
-            velocity_target=K1*((float)R-CA_counter/117.0f)+K2/time_R;
-            if (velocity_target<0.0f) {
-                speed_controller(0.0f);
-            } else {
-                if (velocity_target>(float)V) {
-                    velocity_target=(float)V;
-                }
-                speed_controller(velocity_target);
-            }
+           velocity_target=K1*((float)R-CA_counter/117.0f)+K2/(time_CA*117);
+            if((float)R*117.0f-CA_counter<234.0f && (float)R*117.0f-CA_counter>0.0f){velocity_target=1.0f;}
+            if((float)R<CA_counter/117.0f){velocity_target=0.0f;}
+            if (velocity_target<0.0f){velocity_target=0.0f;}            
+            
+            if(velocity_target>(float)V){velocity_target=(float)V;}
+            speed_controller(velocity_target);
+            
         }
 
 
@@ -273,7 +279,7 @@ void GetSTR(){
 
         ch2=pc.getc();
         pc.putc(ch2);
-
+        
         if(ch2>='A' && ch2<='G'){
             index++;
             Notes[index]=ch2;
@@ -291,7 +297,7 @@ void GetSTR(){
     }while(ch2!='\r' && index<=15);
 
     pc.printf("funtion: Melody\n\r");
-
+    
 }
 
 
@@ -319,7 +325,7 @@ void getInput()
     decV=0;
     R_sign =1;
     V_sign =1;
-
+    
 
     pc.printf("please enter command\n\r");
     STATE state = state0;
@@ -425,7 +431,7 @@ void getInput()
 
         if(intV!=GetDigits(V_int)) {
             V_int=V_int* pow(10.0,(intV-GetDigits(V_int)) );
-        }
+        }  
 
         V=V_sign*( (double)V_int+V_dec );
 
@@ -438,7 +444,7 @@ void getInput()
         if(R!=0 && V!=0) {
             mode=3;
         }
-
+        
         pc.printf("funtion: RV Control\n\r");
         pc.printf("R: %f\n\r",R);
         pc.printf("V: %f\n\r",V);
@@ -447,7 +453,7 @@ void getInput()
 }
 
 void R_getInput()
-{
+{   
     getInput();
     revolution_target = (int)R;
 }
@@ -486,19 +492,26 @@ void m_play(int S, int P){
 //Main
 
 int main()
-{
+{   
     R_getInput();
     if(function==1){
         //Serial pc(SERIAL_TX, SERIAL_RX);//Initialise the serial port
         pc.printf("%d\n\r",revolution_target);
-
-        if(V_sign==-1) {
-            orientation=-orientation;
-            V=-V;
-            lead=orientation;
+        
+        V=abs(V);
+        R=abs(R);
+        if(mode==2) {
+            lead=V_sign*2;
         }
+        if(mode==1) {
+            lead=R_sign*2;
+        }
+        
+        if(mode==3) {
+            lead=R_sign*2;
+        }
+        
 
-        pc.printf("orientation: %d\n\r",orientation);
 
         pc.printf("lead: %d\n\r",lead);
         L1L.period_us(50);
@@ -535,26 +548,20 @@ int main()
 
         }
     }
-
+    
     if(function==2){
         duty_cycle=0.5;
         pc.printf("playing\n\r");
-        for(int i=0;i<=index;i++){
-            pc.printf("Note: %s\n\r",Notes[i]);
-            pc.printf("Seconds: %d\n\r",Seconds[i]);
-            m_period=FindP(Notes[i]);
-            m_play(Seconds[i],m_period);
+        while(1){
+            for(int i=0;i<=index;i++){
+                pc.printf("Note: %s\n\r",Notes[i]);
+                pc.printf("Seconds: %d\n\r",Seconds[i]);
+                m_period=FindP(Notes[i]);
+                m_play(Seconds[i],m_period);
+            }
         }
-        pc.printf("finished\n\r");
-        duty_cycle=1;
-        m_play(1,m_period);
+        //pc.printf("finished\n\r");
+        //duty_cycle=1;
+        //m_play(1,m_period);
     }
 }
-
-// lead controll?
-// motor always saturated. dutycycle of lead=+-1/2
-
-//  调整方式      上升时间     超调量     安定时间       稳态误差     稳定性[10]
-//  ↑ Kp         减少 ↓       增加 ↑    小幅增加 ↗    减少 ↓       变差 ↓
-//  ↑ Ki         小幅减少 ↘   增加↑     增加 ↑        大幅减少↓↓    变差↓
-//  ↑ Kd         小幅减少 ↘   减少↓     减
