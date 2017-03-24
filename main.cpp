@@ -197,7 +197,7 @@ void speed_controller(float v)
         update_motor_state();
     }
     
-    if( 0<v<=4.0f)  {
+    if( 0<v<=4.0f)  { //------------------------on/off control for slow speed;
         if(velocity<v) {
             duty_cycle=1.0f;
         } else {
@@ -209,7 +209,7 @@ void speed_controller(float v)
 
     if(v>4.0f) {
         if(CA_counter==revolution_counter*117+synchronise_counter+1 ) {
-            duty_cycle=K3*(V-1.0f/time_R)+0.08f;
+            duty_cycle=K3*(v-1.0f/time_R)+0.08f;
             update_motor_state();
         }
     }
@@ -228,17 +228,19 @@ void controller()
         velocity=1.0f/117/time_CA;
 
         if(mode==1) {
+            
             velocity_target=K1*((float)R-CA_counter/117.0f)+K2/(time_CA*117);
             if((float)R*117.0f-CA_counter<234.0f && (float)R*117.0f-CA_counter>0.0f){velocity_target=1.0f;}
             if((float)R<CA_counter/117.0f){velocity_target=0.0f;
             }
             if (velocity_target<0.0f){velocity_target=0.0f;}            
             speed_controller(velocity_target);
-        }
+            
+            }
 
 
-        if(mode==2) { //------------------------on/off control for slow speed;
-        
+        if(mode==2) {
+            
             speed_controller((float)V);
             
         }
@@ -254,7 +256,7 @@ void controller()
             
         }
 
-
+        thread.signal_clr(0x1);
         I1.enable_irq();
         I2.enable_irq();
         I3.enable_irq();
@@ -538,14 +540,17 @@ int main()
         T.start();
         thread.start(controller);
 
+        osThreadSetPriority(osThreadGetId(), osPriorityIdle);  ///-----set main priority as the lowest.
         while (1) {
-            wait(1);
+          //  tt=1;
+          //  tt=0;
+         
             pc.printf("revolutions: %f\n\r",CA_counter/117.0f);
             pc.printf("velocity_target %f\n\r", velocity_target);
             pc.printf("synchronise_counter %d\n\r", synchronise_counter);
             pc.printf("velocity_R %f\n\r", 1.0f/time_R);
             pc.printf("mode: %d\n\r",mode);
-
+         
         }
     }
     
