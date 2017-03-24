@@ -67,7 +67,7 @@ DigitalOut L2H(L2Hpin);
 DigitalOut L3H(L3Hpin);
 //Set a given drive state
 
-RawSerial pc(USBTX, USBRX);  //-------------------------------------------------------------------change1
+RawSerial pc(USBTX, USBRX); 
 Timer test;
 Thread thread;
 Timer t;
@@ -91,9 +91,9 @@ const float K2=-0.013;//revolutions PD CONTROLLER parameter:K_differential
 const float K3=0.3; //speed P CONTROLLER parameter:K_proportional
 
 
-//----------------------------------------
 volatile int8_t intState = 0;
 int8_t orState = 0;    //Rotot offset at motor state 0
+
 //-----------------------------------------------------------------------------
 typedef enum {
     state0 = 0,
@@ -496,7 +496,7 @@ void m_play(int S, int P){
 int main()
 {   
     R_getInput();
-    if(function==1){
+    if(function==1){     //control RV
         //Serial pc(SERIAL_TX, SERIAL_RX);//Initialise the serial port
         pc.printf("%d\n\r",revolution_target);
         
@@ -554,7 +554,7 @@ int main()
         }
     }
     
-    if(function==2){
+    if(function==2){        //play melody 
         duty_cycle=0.5;
         pc.printf("playing\n\r");
         while(1){
@@ -565,8 +565,5 @@ int main()
                 m_play(Seconds[i],m_period);
             }
         }
-        //pc.printf("finished\n\r");
-        //duty_cycle=1;
-        //m_play(1,m_period);
     }
 }
